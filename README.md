@@ -155,6 +155,36 @@ python train.py --data coco.yaml --epochs 300 --weights '' --cfg yolov5n.yaml  -
 
 </details>
 
+<details>
+<summary>NetsPresso Tutorial for model compression</summary>
+Step1. Convert YOLOv5 to _torchfx.pt <br/>
+Step2. Model Compression with NetsPresso <br/>
+Step3. Fine-tuning the compressed Model <br/><br/>
+Step0. If you want to start from scratch, create a '.pt' file via train.py.
+
+```bash
+python train.py --data coco.yaml --epochs 300 --weights '' --cfg yolov5n.yaml  --batch-size 128
+                                                                 yolov5s                    64
+                                                                 yolov5m                    40
+                                                                 yolov5l                    24
+                                                                 yolov5x                    16
+```
+Step1. Convert YOLOv5 to _torchfx.pt
+```bash
+python export.py --weights yolov5s.pt --include netspresso
+```
+Executing this code will create 'model_torchfx.pt' and 'model_head.pt'.<br/><br/>
+Step2. Model Compression with NetsPresso<br/>
+Upload & compress your model by using NetsPresso Model Compressor module here: https://console.netspresso.ai/models<br/><br/>
+Step3. Fine-tuning the compressed Model</br>
+Place the compressed model in the same place as the files obtained in Step 1('model_torchfx.pt', 'model_head.pt'). Change the compressed model name to 'model_compressed.pt'.
+```bash
+python train.py --data coco.yaml --epochs 300 --weights model_compressed.pt --batch-size 128 --netspresso
+```
+
+Now you can use the compressed model however you like!
+</details>
+
 <details open>
 <summary>Tutorials</summary>
 
