@@ -16,6 +16,7 @@ TensorFlow Lite             | `tflite`                      | yolov5s.tflite
 TensorFlow Edge TPU         | `edgetpu`                     | yolov5s_edgetpu.tflite
 TensorFlow.js               | `tfjs`                        | yolov5s_web_model/
 PaddlePaddle                | `paddle`                      | yolov5s_paddle_model/
+NetsPresso                  | `netspresso`                  | yolov5s_torchfx.pt
 
 Requirements:
     $ pip install -r requirements.txt coremltools onnx onnx-simplifier onnxruntime openvino-dev tensorflow-cpu  # CPU
@@ -110,7 +111,8 @@ def export_formats():
         ['TensorFlow Lite', 'tflite', '.tflite', True, False],
         ['TensorFlow Edge TPU', 'edgetpu', '_edgetpu.tflite', False, False],
         ['TensorFlow.js', 'tfjs', '_web_model', False, False],
-        ['PaddlePaddle', 'paddle', '_paddle_model', True, True],]
+        ['PaddlePaddle', 'paddle', '_paddle_model', True, True],
+        ['NetsPresso', 'netspresso', '.pt', True, True],]
     return pd.DataFrame(x, columns=['Format', 'Argument', 'Suffix', 'CPU', 'GPU'])
 
 
@@ -145,6 +147,29 @@ def export_torchscript(model, im, file, optimize, prefix=colorstr('TorchScript:'
         optimize_for_mobile(ts)._save_for_lite_interpreter(str(f), _extra_files=extra_files)
     else:
         ts.save(str(f), _extra_files=extra_files)
+    return f, None
+
+
+@try_export
+def export_netspresso(model, file, prefix=colorstr('NetsPresso:')):
+    # YOLOv5 model export for NetsPresso
+    import torch.fx as fx
+    
+    LOGGER.info(f'\n{prefix} starting export with torch {torch.__version__}...')
+    f = str(file).replace('.pt', f'_torchfx.pt')
+    
+    #save model_torchfx.pt
+    model.train()
+    _graph = fx.Tracer().trace(model, {'augment': False, 'profile':False, 'visualize':False})
+    traced_model = fx.GraphModule(model, _graph)
+    torch.save(traced_model, f)
+    
+    f = str(file).replace('.pt', f'_head.pt')
+    
+    #save model_head.pt
+    model_head = model.model[-1]
+    torch.save(model_head, f)
+    
     return f, None
 
 
@@ -680,7 +705,7 @@ def run(
     fmts = tuple(export_formats()['Argument'][1:])  # --include arguments
     flags = [x in include for x in fmts]
     assert sum(flags) == len(include), f'ERROR: Invalid --include {include}, valid --include arguments are {fmts}'
-    jit, onnx, xml, engine, coreml, saved_model, pb, tflite, edgetpu, tfjs, paddle = flags  # export booleans
+    jit, onnx, xml, engine, coreml, saved_model, pb, tflite, edgetpu, tfjs, paddle, netspresso = flags  # export booleans
     file = Path(url2file(weights) if str(weights).startswith(('http:/', 'https:/')) else weights)  # PyTorch weights
 
     # Load PyTorch model
@@ -756,6 +781,8 @@ def run(
             f[9], _ = export_tfjs(file, int8)
     if paddle:  # PaddlePaddle
         f[10], _ = export_paddle(model, im, file, metadata)
+    if netspresso:  # NetsPresso
+        f[11], _ = export_netspresso(model, file)
 
     # Finish
     f = [str(x) for x in f if x]  # filter out '' and None
