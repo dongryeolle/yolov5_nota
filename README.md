@@ -175,7 +175,7 @@ python export.py --weights yolov5s.pt --include netspresso
 ```
 Executing this code will create 'model_torchfx.pt' and 'model_head.pt'.<br/><br/>
 Step2. Model Compression with NetsPresso<br/>
-Upload & compress your model by using NetsPresso Model Compressor module here: https://console.netspresso.ai/models<br/><br/>
+Upload & compress your 'model_torchfx.pt' by using NetsPresso Model Compressor module here: https://console.netspresso.ai/models<br/><br/>
 Step3. Fine-tuning the compressed Model</br>
 Place the compressed model in the same place as the files obtained in Step 1('model_torchfx.pt', 'model_head.pt'). Change the compressed model name to 'model_compressed.pt'.
 ```bash
