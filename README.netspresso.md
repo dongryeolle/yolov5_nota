@@ -48,7 +48,7 @@ Executing this code will create 'model_torchfx.pt' and 'model_head.pt'.<br/><br/
 Upload & compress your 'model_torchfx.pt' by using NetsPresso Model Compressor module here: https://console.netspresso.ai/models<br/><br/>
 
 ## 5. Fine-tuning the compressed Model</br>
-Place the compressed model in the same place as the files obtained in Step 1('model_torchfx.pt', 'model_head.pt'). Change the compressed model name to 'model_compressed.pt'.
+Place the compressed model in the same place as the files obtained in Step 3('model_torchfx.pt', 'model_head.pt'). Change the compressed model name to 'model_compressed.pt'.
 ```bash
 python train.py --data coco.yaml --epochs 300 --weights model_compressed.pt --batch-size 128 --netspresso
 ```
