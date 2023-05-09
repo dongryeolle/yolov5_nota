@@ -53,9 +53,13 @@ class Detect(nn.Module):
         self.register_buffer('anchors', torch.tensor(anchors).float().view(self.nl, -1, 2))  # shape(nl,na,2)
         self.m = nn.ModuleList(nn.Conv2d(x, self.no * self.na, 1) for x in ch)  # output conv
         self.inplace = inplace  # use inplace ops (e.g. slice assignment)
-
+        self.include_postprocess = True
     def forward(self, x):
         z = []  # inference output
+        if not self.include_postprocess:
+            for i in range(self.nl):
+                x[i] = self.m[i](x[i])
+            return x
         for i in range(self.nl):
             if self.netspresso:
                 bs, _, ny, nx, _ = x[i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
