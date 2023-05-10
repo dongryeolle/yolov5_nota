@@ -684,7 +684,7 @@ def run(
         device='cpu',  # cuda device, i.e. 0 or 0,1,2,3 or cpu
         include=('torchscript', 'onnx'),  # include formats
         half=False,  # FP16 half-precision export
-        postprocess=False, # include post-process export
+        wo_postprocess=False, # without post-process export
         inplace=False,  # set YOLOv5 Detect() inplace=True
         keras=False,  # use Keras
         optimize=False,  # TorchScript: optimize for mobile
@@ -733,19 +733,19 @@ def run(
             m.inplace = inplace
             m.dynamic = dynamic
             m.export = True
-            if postprocess:
-                m.include_postprocess = True
-            else:
+            if wo_postprocess:
                 m.include_postprocess = False
+            else:
+                m.include_postprocess = True
 
     for _ in range(2):
         y = model(im)  # dry runs
     if half and not coreml:
         im, model = im.half(), model.half()  # to FP16
-    if postprocess:
-        shape = tuple(y[0] if isinstance(y, tuple) else y).shape # model output shape with postprocess
+    if wo_postprocess:
+        shape = tuple(([output.shape for output in y])) # model output shape without postprocess or training
     else:
-        shape = tuple(([output.shape for output in y])) # model output shape w/o postprocess or training
+        shape = (y[0] if isinstance(y, tuple) else y).shape # model output shape with postprocess
     metadata = {'stride': int(max(model.stride)), 'names': model.names}  # model metadata
     LOGGER.info(f"\n{colorstr('PyTorch:')} starting from {file} with output shape {shape} ({file_size(file):.1f} MB)")
 
@@ -818,7 +818,7 @@ def parse_opt(known=False):
     parser.add_argument('--batch-size', type=int, default=1, help='batch size')
     parser.add_argument('--device', default='cpu', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--half', action='store_true', help='FP16 half-precision export')
-    parser.add_argument('--wo-postprocess', action='store_false', help='without post-process export')
+    parser.add_argument('--wo-postprocess', action='store_true', help='without post-process export')
     parser.add_argument('--inplace', action='store_true', help='set YOLOv5 Detect() inplace=True')
     parser.add_argument('--keras', action='store_true', help='TF: use Keras')
     parser.add_argument('--optimize', action='store_true', help='TorchScript: optimize for mobile')
