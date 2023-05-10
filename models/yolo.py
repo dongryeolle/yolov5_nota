@@ -42,7 +42,7 @@ class Detect(nn.Module):
     export = False  # export mode
     netspresso = False
 
-    def __init__(self, nc=80, anchors=(), ch=(), inplace=True):  # detection layer
+    def __init__(self, nc=80, anchors=(), ch=(), inplace=True, fastest=False):  # detection layer
         super().__init__()
         self.nc = nc  # number of classes
         self.no = nc + 5  # number of outputs per anchor
@@ -51,16 +51,23 @@ class Detect(nn.Module):
         self.grid = [torch.empty(0) for _ in range(self.nl)]  # init grid
         self.anchor_grid = [torch.empty(0) for _ in range(self.nl)]  # init anchor grid
         self.register_buffer('anchors', torch.tensor(anchors).float().view(self.nl, -1, 2))  # shape(nl,na,2)
-        self.m = nn.ModuleList(nn.Conv2d(x, self.no * self.na, 1) for x in ch)  # output conv
+        self.fastest = fastest
+        if not self.fastest:
+            self.m = nn.ModuleList(nn.Conv2d(x, self.no * self.na, 1) for x in ch)  # output conv
         self.inplace = inplace  # use inplace ops (e.g. slice assignment)
-
+        self.include_postprocess = True
     def forward(self, x):
         z = []  # inference output
+        if not self.include_postprocess:
+            for i in range(self.nl):
+                x[i] = self.m[i](x[i])
+            return x
         for i in range(self.nl):
             if self.netspresso:
                 bs, _, ny, nx, _ = x[i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
             else: 
-                x[i] = self.m[i](x[i])  # conv
+                if not self.fastest:
+                    x[i] = self.m[i](x[i])  # conv
                 bs, _, ny, nx = x[i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
                 x[i] = x[i].view(bs, self.na, self.no, ny, nx).permute(0, 1, 3, 4, 2).contiguous()
 
@@ -91,8 +98,7 @@ class Detect(nn.Module):
         grid = torch.stack((xv, yv), 2).expand(shape) - 0.5  # add grid offset, i.e. y = 2.0 * x - 0.5
         anchor_grid = (self.anchors[i] * self.stride[i]).view((1, self.na, 1, 1, 2)).expand(shape)
         return grid, anchor_grid
-
-
+    
 class Segment(Detect):
     # YOLOv5 Segment head for segmentation models
     def __init__(self, nc=80, anchors=(), nm=32, npr=256, ch=(), inplace=True):
@@ -197,10 +203,11 @@ class DetectionModel(BaseModel):
             m.inplace = self.inplace
             forward = lambda x: self.forward(x)[0] if isinstance(m, Segment) else self.forward(x)
             m.stride = torch.tensor([s / x.shape[-2] for x in forward(torch.zeros(1, ch, s, s))])  # forward
-            check_anchor_order(m)
             m.anchors /= m.stride.view(-1, 1, 1)
+            check_anchor_order(m)
             self.stride = m.stride
-            self._initialize_biases()  # only run once
+            if isinstance(m, Detect) and not m.fastest:
+                self._initialize_biases()  # only run once
 
         # Init weights, biases
         initialize_weights(self)
@@ -303,7 +310,11 @@ class ClassificationModel(BaseModel):
 def parse_model(d, ch):  # model_dict, input_channels(3)
     # Parse a YOLOv5 model.yaml dictionary
     LOGGER.info(f"\n{'':>3}{'from':>18}{'n':>3}{'params':>10}  {'module':<40}{'arguments':<30}")
-    anchors, nc, gd, gw, act = d['anchors'], d['nc'], d['depth_multiple'], d['width_multiple'], d.get('activation')
+    if hasattr(d, "model"):
+        model_name, anchors, nc, gd, gw, act = d['model'], d['anchors'], d['nc'], d['depth_multiple'], d['width_multiple'], d.get('activation')
+    else:
+        anchors, nc, gd, gw, act = d['anchors'], d['nc'], d['depth_multiple'], d['width_multiple'], d.get('activation')
+        model_name = "v5"
     if act:
         Conv.default_act = eval(act)  # redefine default activation, i.e. Conv.default_act = nn.SiLU()
         LOGGER.info(f"{colorstr('activation:')} {act}")  # print
@@ -314,13 +325,19 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
     for i, (f, n, m, args) in enumerate(d['backbone'] + d['head']):  # from, number, module, args
         m = eval(m) if isinstance(m, str) else m  # eval strings
         for j, a in enumerate(args):
-            with contextlib.suppress(NameError):
-                args[j] = eval(a) if isinstance(a, str) else a  # eval strings
-
+            try:
+                if a == "no":
+                    args[j] = no
+                with contextlib.suppress(NameError):
+                    args[j] = eval(a) if isinstance(a, str) else a  # eval strings
+            except:
+                pass
+            
         n = n_ = max(round(n * gd), 1) if n > 1 else n  # depth gain
         if m in {
                 Conv, GhostConv, Bottleneck, GhostBottleneck, SPP, SPPF, DWConv, MixConv2d, Focus, CrossConv,
-                BottleneckCSP, C3, C3TR, C3SPP, C3Ghost, nn.ConvTranspose2d, DWConvTranspose2d, C3x}:
+                BottleneckCSP, C3, C3TR, C3SPP, C3Ghost, nn.ConvTranspose2d, DWConvTranspose2d, C3x,
+                ConvNormReLU6, GroupConvNormReLU6, ConvNorm, ConvStandalone, ConvUpsample}:
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
                 c2 = make_divisible(c2 * gw, 8)
@@ -336,6 +353,8 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         # TODO: channel, gw, gd
         elif m in {Detect, Segment}:
             args.append([ch[x] for x in f])
+            if model_name == 'fastest' and m in {Detect}:
+                args += [True, True]
             if isinstance(args[1], int):  # number of anchors
                 args[1] = [list(range(args[1] * 2))] * len(f)
             if m is Segment:
@@ -344,6 +363,12 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             c2 = ch[f] * args[0] ** 2
         elif m is Expand:
             c2 = ch[f] // args[0] ** 2
+        elif m is ResBlock:
+            c1, c2 = args[1], args[0]
+            if c2 != no:  # if not output
+                c2 = make_divisible(c2 * gw, 8)
+
+            args = [c2, c1, *args[1:]]
         else:
             c2 = ch[f]
 

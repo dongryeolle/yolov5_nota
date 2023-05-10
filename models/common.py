@@ -58,6 +58,25 @@ class Conv(nn.Module):
     def forward_fuse(self, x):
         return self.act(self.conv(x))
 
+class ConvStandalone(nn.Module):
+    # Standard convolution
+    def __init__(self, c1, c2, k=1, s=1, p=None, g=1, act=True):  # ch_in, ch_out, kernel, stride, padding, groups
+        super().__init__()
+        self.conv = nn.Conv2d(c1, c2, k, s, autopad(k, p), groups=g, bias=False)
+
+    def forward(self, x):
+        return self.conv(x)
+    
+class ConvUpsample(nn.Module):
+    # Standard convolution
+    def __init__(self, c1, c2, k=2, s=2, p=None, g=1, act=True):  # ch_in, ch_out, kernel, stride, padding, groups
+        super().__init__()
+        self.conv = nn.Conv2d(c1, c2, k, s, autopad(k, p), groups=g, bias=False)
+        self.deconv = nn.Upsample(scale_factor=2, mode='nearest')
+
+    def forward(self, x):
+        x = self.conv(x)
+        return self.deconv(x)
 
 class DWConv(Conv):
     # Depth-wise convolution
@@ -244,6 +263,55 @@ class Focus(nn.Module):
         return self.conv(torch.cat((x[..., ::2, ::2], x[..., 1::2, ::2], x[..., ::2, 1::2], x[..., 1::2, 1::2]), 1))
         # return self.conv(self.contract(x))
 
+class ConvNormReLU6(nn.Module):
+    # Standard convolution + Barchnorm + ReLU6
+    def __init__(self, c1, c2, k=1, s=1, p=None, g=1, act=True):  # ch_in, ch_out, kernel, stride, padding, groups
+        super().__init__()
+        self.conv = nn.Conv2d(c1, c2, k, s, autopad(k, p), groups=g, bias=False)
+        self.bn = nn.BatchNorm2d(c2)
+        self.act = nn.ReLU6(inplace=False)
+
+    def forward(self, x):
+        return self.act(self.bn(self.conv(x)))
+    
+class GroupConvNormReLU6(nn.Module):
+    # Standard convolution + Barchnorm + ReLU6
+    def __init__(self, c1, c2, k=1, s=1, p=None, g=1, act=True):  # ch_in, ch_out, kernel, stride, padding, groups
+        super().__init__()
+        self.conv = nn.Conv2d(c1, c2, k, s, autopad(k, p), groups=c1, bias=False)
+        self.bn = nn.BatchNorm2d(c2)
+        self.act = nn.ReLU6(inplace=False)
+
+    def forward(self, x):
+        return self.act(self.bn(self.conv(x)))
+    
+class ConvNorm(nn.Module):
+    # Standard convolution + Barchnorm
+    def __init__(self, c1, c2, k=1, s=1, p=None, g=1, act=True):  # ch_in, ch_out, kernel, stride, padding, groups
+        super().__init__()
+        self.conv = nn.Conv2d(c1, c2, k, s, autopad(k, p), groups=g, bias=False)
+        self.bn = nn.BatchNorm2d(c2)
+
+    def forward(self, x):
+        return self.bn(self.conv(x))
+
+class ResBlock(nn.Module):
+    def __init__(self, c1, c2, k=1, s=1, p=None, d=1, bias=True, act=True):
+        super(ResBlock, self).__init__()
+
+        self.conv1 = ConvNormReLU6(c1, c2, k=1, s=1)
+        self.conv2 = GroupConvNormReLU6(c2, c2, k=3, s=1, g=c2)
+        self.conv3 = ConvNorm(c2, c1, k=1, s=1)
+
+    def forward(self, x):
+        residual = x
+
+        x = self.conv1(x)
+        x = self.conv2(x)
+        out = self.conv3(x)
+
+        out += residual
+        return out
 
 class GhostConv(nn.Module):
     # Ghost Convolution https://github.com/huawei-noah/ghostnet
@@ -332,7 +400,7 @@ class DetectMultiBackend(nn.Module):
 
         super().__init__()
         w = str(weights[0] if isinstance(weights, list) else weights)
-        pt, jit, onnx, xml, engine, coreml, saved_model, pb, tflite, edgetpu, tfjs, paddle, triton = self._model_type(w)
+        pt, jit, onnx, xml, engine, coreml, saved_model, pb, tflite, edgetpu, tfjs, paddle, triton, _ = self._model_type(w)
         fp16 &= pt or jit or onnx or engine  # FP16
         nhwc = coreml or saved_model or pb or tflite or edgetpu  # BHWC formats (vs torch BCWH)
         stride = 32  # default stride
