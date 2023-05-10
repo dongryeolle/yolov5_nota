@@ -745,7 +745,7 @@ def run(
     if postprocess:
         shape = tuple(y[0] if isinstance(y, tuple) else y).shape # model output shape with postprocess
     else:
-        shape = tuple((y[0].shape, y[1].shape, y[2].shape)) # model output shape w/o postprocess or training
+        shape = tuple(([output.shape for output in y])) # model output shape w/o postprocess or training
     metadata = {'stride': int(max(model.stride)), 'names': model.names}  # model metadata
     LOGGER.info(f"\n{colorstr('PyTorch:')} starting from {file} with output shape {shape} ({file_size(file):.1f} MB)")
 
