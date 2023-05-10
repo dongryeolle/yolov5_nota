@@ -42,7 +42,7 @@ class Detect(nn.Module):
     export = False  # export mode
     netspresso = False
 
-    def __init__(self, nc=80, anchors=(), ch=(), fastest=False, inplace=True):  # detection layer
+    def __init__(self, nc=80, anchors=(), ch=(), inplace=True, fastest=False):  # detection layer
         super().__init__()
         self.nc = nc  # number of classes
         self.no = nc + 5  # number of outputs per anchor
@@ -310,7 +310,11 @@ class ClassificationModel(BaseModel):
 def parse_model(d, ch):  # model_dict, input_channels(3)
     # Parse a YOLOv5 model.yaml dictionary
     LOGGER.info(f"\n{'':>3}{'from':>18}{'n':>3}{'params':>10}  {'module':<40}{'arguments':<30}")
-    model_name, anchors, nc, gd, gw, act = d['model'],d['anchors'], d['nc'], d['depth_multiple'], d['width_multiple'], d.get('activation')
+    if hasattr(d, "model"):
+        model_name, anchors, nc, gd, gw, act = d['model'], d['anchors'], d['nc'], d['depth_multiple'], d['width_multiple'], d.get('activation')
+    else:
+        anchors, nc, gd, gw, act = d['anchors'], d['nc'], d['depth_multiple'], d['width_multiple'], d.get('activation')
+        model_name = "v5"
     if act:
         Conv.default_act = eval(act)  # redefine default activation, i.e. Conv.default_act = nn.SiLU()
         LOGGER.info(f"{colorstr('activation:')} {act}")  # print
@@ -350,7 +354,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         elif m in {Detect, Segment}:
             args.append([ch[x] for x in f])
             if model_name == 'fastest' and m in {Detect}:
-                args.append(True)
+                args += [True, True]
             if isinstance(args[1], int):  # number of anchors
                 args[1] = [list(range(args[1] * 2))] * len(f)
             if m is Segment:
