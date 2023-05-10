@@ -59,9 +59,12 @@ class Detect(nn.Module):
     def forward(self, x):
         z = []  # inference output
         if not self.include_postprocess:
-            for i in range(self.nl):
-                x[i] = self.m[i](x[i])
-            return x
+            if not self.fastest:
+                for i in range(self.nl):
+                    x[i] = self.m[i](x[i])
+                return x
+            else:
+                return x
         for i in range(self.nl):
             if self.netspresso:
                 bs, _, ny, nx, _ = x[i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
@@ -310,7 +313,7 @@ class ClassificationModel(BaseModel):
 def parse_model(d, ch):  # model_dict, input_channels(3)
     # Parse a YOLOv5 model.yaml dictionary
     LOGGER.info(f"\n{'':>3}{'from':>18}{'n':>3}{'params':>10}  {'module':<40}{'arguments':<30}")
-    if hasattr(d, "model"):
+    if "model" in d:
         model_name, anchors, nc, gd, gw, act = d['model'], d['anchors'], d['nc'], d['depth_multiple'], d['width_multiple'], d.get('activation')
     else:
         anchors, nc, gd, gw, act = d['anchors'], d['nc'], d['depth_multiple'], d['width_multiple'], d.get('activation')
