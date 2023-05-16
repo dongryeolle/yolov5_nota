@@ -711,7 +711,6 @@ class AutoShape(nn.Module):
                 m = self.model.model[-1] if self.dmb else self.model[-1]
             else:
                 m = self.model.model.model[-1] if self.dmb else self.model.model[-1]  # Detect()
-            m = self.model.model.model[-1] if self.dmb else self.model.model[-1]  # Detect()
             m.inplace = False  # Detect.inplace=False for safe multithread inference
             m.export = True  # do not output loss values
 
@@ -723,7 +722,6 @@ class AutoShape(nn.Module):
                 m = self.model.model[-1] if self.dmb else self.model[-1]
             else:
                 m = self.model.model.model[-1] if self.dmb else self.model.model[-1]  # Detect()
-            m = self.model.model.model[-1] if self.dmb else self.model.model[-1]  # Detect()
             m.stride = fn(m.stride)
             m.grid = list(map(fn, m.grid))
             if isinstance(m.anchor_grid, list):
